@@ -1,0 +1,898 @@
+{
+  "id": "ddMvxptmLGbv6C6T",
+  "name": "Telegram → Obsidian Clipper (Gemini v4)",
+  "description": null,
+  "active": true,
+  "activeVersionId": "c37be47f-cdaa-4059-9f62-33b2685f98f8",
+  "createdAt": "2026-08-26T12:16:48.373Z",
+  "updatedAt": "2026-09-15T19:17:03.401Z",
+  "isArchived": false,
+  "versionId": "c37be47f-cdaa-4059-9f62-33b2685f98f8",
+  "versionCounter": 5,
+  "sourceWorkflowId": null,
+  "triggerCount": 1,
+  "nodes": [
+    {
+      "id": "82d6ec03-3514-4589-a8f8-db625afb2053",
+      "name": "Telegram Trigger",
+      "webhookId": "telegram-obsidian-clipper-v3",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -752,
+        192
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "2n4poZ3CUYo46VwR",
+          "name": "Telegram Bot - Multi RSS to Telegram"
+        }
+      }
+    },
+    {
+      "id": "a8e4f3fc-99c9-46a8-a249-1d98934be5e5",
+      "name": "Es URL valida y mia",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-url",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "https?://",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ff14008e-852d-4b5b-8004-6eb69cc6194e",
+      "name": "Telegram ACK",
+      "webhookId": "33b85aa0-513e-4f2b-ae16-dfe0b237d9ea",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -304,
+        64
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "⏳ Procesando tu link... dame un momento.",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "2n4poZ3CUYo46VwR",
+          "name": "Telegram Bot - Multi RSS to Telegram"
+        }
+      }
+    },
+    {
+      "id": "690d9376-dba7-4d4e-a815-1833e9e71be2",
+      "name": "Jina Reader Scraping",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueErrorOutput",
+      "position": [
+        -80,
+        64
+      ],
+      "parameters": {
+        "url": "=https://r.jina.ai/{{ encodeURIComponent($('Telegram Trigger').item.json.message.text.match(/https?:\\/\\/[^\\s]+/)[0]) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "text/markdown"
+            },
+            {
+              "name": "X-Return-Format",
+              "value": "markdown"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "44167ce8-8b4e-450a-bce9-8f9cb28826f0",
+      "name": "Gemini Procesar Contenido",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "onError": "continueErrorOutput",
+      "position": [
+        144,
+        64
+      ],
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-1.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-1.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Eres un asistente que genera notas estructuradas en formato Obsidian Markdown. Recibes contenido de una página web y debes generar ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin bloques de código markdown, sin explicaciones previas ni posteriores.\n\nEl JSON debe tener exactamente esta estructura:\n{\"titulo\": \"título conciso máx 60 caracteres\", \"resumen\": \"resumen de 3-5 oraciones\", \"tags\": [\"tag1\", \"tag2\", \"tag3\"], \"puntos_clave\": [\"punto 1\", \"punto 2\", \"punto 3\"]}\n\nREGLAS: título sin caracteres especiales ni barras, tags sin el símbolo #, responde SOLO el JSON crudo.",
+              "role": "system"
+            },
+            {
+              "content": "=URL: {{ $('Telegram Trigger').item.json.message.text }}\n\nContenido:\n{{ ($json.data || $json.body || '').substring(0, 4000) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "16dkUZCx5GuuNXi8",
+          "name": "Google Gemini API PaLM - En uso"
+        }
+      }
+    },
+    {
+      "id": "8dff8d3f-c03a-401a-8b04-ba63496a1c29",
+      "name": "Construir Nota Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        64
+      ],
+      "parameters": {
+        "jsCode": "\n// Recuperar datos de los nodos previos de forma segura\nconst msgText = $('Telegram Trigger').first()?.json?.message?.text || '';\nconst rawUrl = msgText.match(/https?:\\/\\/[^\\s]+/)?.[0] || '';\nconst urlOriginal = rawUrl.replace(/[.,;:!?)\">']+$/, '');\nconst comentario = msgText.replace(rawUrl, '').trim();\n\n// Datos extraídos por Jina Reader (si existen)\nconst jinaData = $('Jina Reader Scraping').first()?.json?.data || '';\nlet jinaTitle = '';\nif (jinaData) {\n  const m = jinaData.match(/^Title:\\s*(.+)$/m);\n  if (m) jinaTitle = m[1].replace(/\\s*[-|]\\s*GitHub.*$/i, '').trim();\n}\n\n// Intentar leer JSON de Gemini (si respondió)\nlet titulo = '', resumen = '', tags = [], puntos_clave = [];\ntry {\n  const geminiText = $input.first()?.json?.content?.parts?.[0]?.text || '';\n  const jsonMatch = geminiText.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[0]);\n    titulo = parsed.titulo || '';\n    resumen = parsed.resumen || '';\n    tags = Array.isArray(parsed.tags) ? parsed.tags : [];\n    puntos_clave = Array.isArray(parsed.puntos_clave) ? parsed.puntos_clave : [];\n  }\n} catch(e) {}\n\n// Fallback de título si Gemini falló\nif (!titulo || titulo.length < 3) {\n  if (jinaTitle) {\n    titulo = jinaTitle;\n  } else {\n    try {\n      const u = new URL(urlOriginal);\n      const slug = u.pathname.split('/').filter(Boolean).pop() || '';\n      titulo = slug.replace(/[-_]+/g, ' ').replace(/\\.(html?|php)$/i, '');\n      if (!titulo || titulo.length < 3) titulo = u.hostname.replace('www.', '');\n    } catch(e) {\n      titulo = 'Enlace Telegram';\n    }\n  }\n}\n\n// Clasificación automática en las 14 categorías existentes\nlet categoriaFile = '14 - Misceláneos y Otros.md';\nlet tagCat = 'miscelaneos';\nlet tipoContenido = 'Recurso Web';\nconst uLower = urlOriginal.toLowerCase();\n\nif (uLower.includes('github.com') || uLower.includes('gitlab.com')) {\n  categoriaFile = '02 - GitHub y Proyectos Open Source.md';\n  tagCat = 'github, open-source';\n  tipoContenido = 'Repositorio Open Source';\n} else if (uLower.includes('linkedin.com') || uLower.includes('lnkd.in')) {\n  categoriaFile = '12 - LinkedIn y Red Profesional.md';\n  tagCat = 'linkedin, profesional';\n  tipoContenido = 'Perfil / Publicación Profesional';\n} else if (uLower.includes('youtube.com') || uLower.includes('youtu.be') || uLower.includes('spotify.com')) {\n  categoriaFile = '07 - Videos y Multimedia (YouTube).md';\n  tagCat = 'video, youtube';\n  tipoContenido = 'Video / Multimedia';\n} else if (/(security|seguridad|ciber|exploit|nmap|hack|cve|vulnerab|kali|wireshark|redeszone|fortinet|owasp)/i.test(uLower)) {\n  categoriaFile = '01 - Ciberseguridad, Redes y Hacking.md';\n  tagCat = 'ciberseguridad, hacking';\n  tipoContenido = 'Herramienta / Artículo de Ciberseguridad';\n} else if (/(chatgpt|openai|claude|gemini|prompt|midjourney|leonardo\\.ai|stable-diffusion|llm|ollama|huggingface)/i.test(uLower)) {\n  categoriaFile = '03 - Inteligencia Artificial y LLMs.md';\n  tagCat = 'ia, llm, machine-learning';\n  tipoContenido = 'Recurso de Inteligencia Artificial';\n} else if (/(python|bash|javascript|golang|api|docker|devops|sql)/i.test(uLower)) {\n  categoriaFile = '04 - Desarrollo, Python y DevOps.md';\n  tagCat = 'desarrollo, python, devops';\n  tipoContenido = 'Programación y DevOps';\n} else if (/(linux|ubuntu|debian|sysadmin|proxmox|btrfs|zfs|openwrt)/i.test(uLower)) {\n  categoriaFile = '05 - Sistemas Operativos y Sysadmin (Linux, Windows).md';\n  tagCat = 'sysadmin, linux';\n  tipoContenido = 'Administración de Sistemas';\n} else if (/(curso|udemy|coursera|facialix|cursin|educalix|platzi)/i.test(uLower)) {\n  categoriaFile = '06 - Cursos, Certificaciones y Libros.md';\n  tagCat = 'curso, capacitacion';\n  tipoContenido = 'Curso o Material de Estudio';\n} else if (/(arcade|emuline|teknoparrot|retroarch|mame|roms|taito)/i.test(uLower)) {\n  categoriaFile = '08 - Arcade, Emulación y Gaming.md';\n  tagCat = 'arcade, emulacion';\n  tipoContenido = 'Arcade y Gaming';\n} else if (/(aliexpress|mercadolibre|amazon)/i.test(uLower)) {\n  categoriaFile = '11 - Compras y Hardware.md';\n  tagCat = 'compras, hardware';\n  tipoContenido = 'Hardware o Componente';\n} else if (/(mega\\.nz|mediafire|drive\\.google)/i.test(uLower)) {\n  categoriaFile = '13 - Descargas y Almacenamiento.md';\n  tagCat = 'descargas, almacenamiento';\n  tipoContenido = 'Descarga de Archivos';\n} else if (/(xataka|genbeta|muycomputer|elchapuzasinformatico|softzone)/i.test(uLower)) {\n  categoriaFile = '10 - Noticias Tech y Artículos.md';\n  tagCat = 'noticias, tech';\n  tipoContenido = 'Noticia Tecnológica';\n}\n\nlet dominio = 'desconocido';\ntry { dominio = new URL(urlOriginal).hostname.replace('www.', ''); } catch(e) {}\n\nconst now = new Date();\nconst dateStr = `${String(now.getDate()).padStart(2,'0')}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getFullYear()).slice(-2)}`;\n\n// Tarjeta Markdown idéntica al archivo temático\nlet card = `\\n### [${titulo.replace(/\\[/g, '(').replace(/\\]/g, ')')}](${urlOriginal})\\n`;\ncard += `- **🌐 Dominio**: \\`${dominio}\\` | **📅 Fecha Compartido**: \\`${dateStr}\\`\\n`;\ncard += `- **📂 Tipo de Contenido**: ${tipoContenido}\\n`;\ncard += `- **📝 Descripción**: ${resumen || 'Enlace capturado automáticamente vía bot de Telegram.'}\\n`;\nif (comentario) {\n  card += `- **💬 Contexto Telegram**: *\"${comentario.replace(/\"/g, '\\\\\"')}\"*\\n`;\n}\ncard += `- **🏷️ Etiquetas**: #${tagCat.replace(/,\\s*/g, ' #')} #captura-telegram\\n\\n***\\n`;\n\nreturn [{\n  json: {\n    titulo,\n    urlOriginal,\n    dominio,\n    categoriaFile,\n    categoriaNombre: categoriaFile.replace('.md', ''),\n    tipoContenido,\n    resumen,\n    markdownCard: card,\n    nombreArchivo: `${now.toISOString().split('T')[0]} - ${titulo.replace(/[\\/\\\\:*?\"<>|]/g, '').trim().substring(0, 60)}`\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "89d0073b-b7d9-41ae-8991-552426709e73",
+      "name": "Obsidian Crear Nota",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true,
+      "onError": "continueErrorOutput",
+      "position": [
+        576,
+        64
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.100:27123/vault/Enlaces WhatsApp/{{ encodeURIComponent($json.categoriaFile) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer REPLACE_WITH_YOUR_OBSIDIAN_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "text/markdown"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/markdown",
+        "body": "={{ $json.markdownCard }}",
+        "options": {
+          "timeout": 15000,
+          "allowUnauthorizedCerts": true
+        }
+      }
+    },
+    {
+      "id": "e35d53ef-1890-4c6b-baaf-dfb8f023aff5",
+      "name": "Telegram Confirmacion OK",
+      "webhookId": "1fba9671-a40b-4232-9e29-db504e824567",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        800,
+        64
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "=✅ *Nota guardada en Obsidian*\n\n📄 *{{ $('Construir Nota Markdown').item.json.titulo }}*\n\n🏷️ {{ $('Construir Nota Markdown').item.json.tags.map(t => '#' + t).join(' ') }}\n\n🌐 {{ $('Construir Nota Markdown').item.json.dominio }}\n🔗 {{ $('Construir Nota Markdown').item.json.urlOriginal }}",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "2n4poZ3CUYo46VwR",
+          "name": "Telegram Bot - Multi RSS to Telegram"
+        }
+      }
+    },
+    {
+      "id": "9ab5d5de-8184-4018-a303-e32986f3b019",
+      "name": "Gmail Notificacion OK",
+      "webhookId": "b9df6dac-a398-42df-8e69-0bbaf799b975",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        800,
+        192
+      ],
+      "parameters": {
+        "sendTo": "admin@gmail.com",
+        "subject": "=📓 Obsidian: {{ $('Construir Nota Markdown').item.json.titulo }}",
+        "message": "=Nueva nota guardada en Obsidian.\n\n📄 Título: {{ $('Construir Nota Markdown').item.json.titulo }}\n🏷️ Tags: {{ $('Construir Nota Markdown').item.json.tags.join(', ') }}\n🌐 Dominio: {{ $('Construir Nota Contenido').item.json.dominio }}\n🔗 Fuente: {{ $('Construir Nota Markdown').item.json.urlOriginal }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "SQAwEZAR5yzfyWei",
+          "name": "Gmail - Notificaciones Mail"
+        }
+      }
+    },
+    {
+      "id": "e419a98f-84de-4a0c-99c5-d9fc8e1a1e85",
+      "name": "Telegram Error",
+      "webhookId": "af5fd3be-1ca1-41e1-a2e9-2f15ee98145b",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        368,
+        336
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "=⚠️ Error al procesar el link:\n\n`{{ $json.message || $json.error?.message || 'Error desconocido' }}`\n\nVerifica que la URL sea accesible e intenta de nuevo.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "2n4poZ3CUYo46VwR",
+          "name": "Telegram Bot - Multi RSS to Telegram"
+        }
+      }
+    },
+    {
+      "id": "706358ab-6805-44b7-9661-1681753c1ccd",
+      "name": "Telegram Rechazo",
+      "webhookId": "e6bd5480-826a-470b-b2d8-28464208a27c",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -304,
+        336
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "❌ Solo proceso URLs válidas enviadas desde tu cuenta autorizada.",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "2n4poZ3CUYo46VwR",
+          "name": "Telegram Bot - Multi RSS to Telegram"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Es URL valida y mia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es URL valida y mia": {
+      "main": [
+        [
+          {
+            "node": "Telegram ACK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram ACK": {
+      "main": [
+        [
+          {
+            "node": "Jina Reader Scraping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jina Reader Scraping": {
+      "main": [
+        [
+          {
+            "node": "Gemini Procesar Contenido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Construir Nota Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Procesar Contenido": {
+      "main": [
+        [
+          {
+            "node": "Construir Nota Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Construir Nota Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Nota Markdown": {
+      "main": [
+        [
+          {
+            "node": "Obsidian Crear Nota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obsidian Crear Nota": {
+      "main": [
+        [
+          {
+            "node": "Telegram Confirmacion OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Confirmacion OK": {
+      "main": [
+        [
+          {
+            "node": "Gmail Notificacion OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodeGroups": [],
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": null,
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "ddMvxptmLGbv6C6T",
+      "projectId": "yUX1TICrYztkfFr4",
+      "project": {
+        "id": "yUX1TICrYztkfFr4",
+        "name": "Security Analyst Morales <admin@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "3794d172-a3cc-4358-8a28-1b1902c5fb61",
+        "createdAt": "2025-07-09T20:26:43.673Z",
+        "updatedAt": "2025-07-09T20:28:51.101Z"
+      },
+      "createdAt": "2026-08-26T12:16:48.373Z",
+      "updatedAt": "2026-08-26T12:16:48.373Z"
+    }
+  ],
+  "activeVersion": {
+    "versionId": "c37be47f-cdaa-4059-9f62-33b2685f98f8",
+    "workflowId": "ddMvxptmLGbv6C6T",
+    "nodes": [
+      {
+        "id": "82d6ec03-3514-4589-a8f8-db625afb2053",
+        "name": "Telegram Trigger",
+        "webhookId": "telegram-obsidian-clipper-v3",
+        "type": "n8n-nodes-base.telegramTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          -752,
+          192
+        ],
+        "parameters": {
+          "updates": [
+            "message"
+          ],
+          "additionalFields": {}
+        },
+        "credentials": {
+          "telegramApi": {
+            "id": "2n4poZ3CUYo46VwR",
+            "name": "Telegram Bot - Multi RSS to Telegram"
+          }
+        }
+      },
+      {
+        "id": "a8e4f3fc-99c9-46a8-a249-1d98934be5e5",
+        "name": "Es URL valida y mia",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          -528,
+          192
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": false,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 1
+            },
+            "conditions": [
+              {
+                "id": "check-url",
+                "leftValue": "={{ $json.message.text }}",
+                "rightValue": "https?://",
+                "operator": {
+                  "type": "string",
+                  "operation": "regex"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "ff14008e-852d-4b5b-8004-6eb69cc6194e",
+        "name": "Telegram ACK",
+        "webhookId": "33b85aa0-513e-4f2b-ae16-dfe0b237d9ea",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          -304,
+          64
+        ],
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+          "text": "⏳ Procesando tu link... dame un momento.",
+          "additionalFields": {}
+        },
+        "credentials": {
+          "telegramApi": {
+            "id": "2n4poZ3CUYo46VwR",
+            "name": "Telegram Bot - Multi RSS to Telegram"
+          }
+        }
+      },
+      {
+        "id": "690d9376-dba7-4d4e-a815-1833e9e71be2",
+        "name": "Jina Reader Scraping",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "onError": "continueErrorOutput",
+        "position": [
+          -80,
+          64
+        ],
+        "parameters": {
+          "url": "=https://r.jina.ai/{{ encodeURIComponent($('Telegram Trigger').item.json.message.text.match(/https?:\\/\\/[^\\s]+/)[0]) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Accept",
+                "value": "text/markdown"
+              },
+              {
+                "name": "X-Return-Format",
+                "value": "markdown"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000
+          }
+        }
+      },
+      {
+        "id": "44167ce8-8b4e-450a-bce9-8f9cb28826f0",
+        "name": "Gemini Procesar Contenido",
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1,
+        "onError": "continueErrorOutput",
+        "position": [
+          144,
+          64
+        ],
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-1.5-flash",
+            "mode": "list",
+            "cachedResultName": "models/gemini-1.5-flash"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "Eres un asistente que genera notas estructuradas en formato Obsidian Markdown. Recibes contenido de una página web y debes generar ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin bloques de código markdown, sin explicaciones previas ni posteriores.\n\nEl JSON debe tener exactamente esta estructura:\n{\"titulo\": \"título conciso máx 60 caracteres\", \"resumen\": \"resumen de 3-5 oraciones\", \"tags\": [\"tag1\", \"tag2\", \"tag3\"], \"puntos_clave\": [\"punto 1\", \"punto 2\", \"punto 3\"]}\n\nREGLAS: título sin caracteres especiales ni barras, tags sin el símbolo #, responde SOLO el JSON crudo.",
+                "role": "system"
+              },
+              {
+                "content": "=URL: {{ $('Telegram Trigger').item.json.message.text }}\n\nContenido:\n{{ ($json.data || $json.body || '').substring(0, 4000) }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "credentials": {
+          "googlePalmApi": {
+            "id": "16dkUZCx5GuuNXi8",
+            "name": "Google Gemini API PaLM - En uso"
+          }
+        }
+      },
+      {
+        "id": "8dff8d3f-c03a-401a-8b04-ba63496a1c29",
+        "name": "Construir Nota Markdown",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          368,
+          64
+        ],
+        "parameters": {
+          "jsCode": "\n// Recuperar datos de los nodos previos de forma segura\nconst msgText = $('Telegram Trigger').first()?.json?.message?.text || '';\nconst rawUrl = msgText.match(/https?:\\/\\/[^\\s]+/)?.[0] || '';\nconst urlOriginal = rawUrl.replace(/[.,;:!?)\">']+$/, '');\nconst comentario = msgText.replace(rawUrl, '').trim();\n\n// Datos extraídos por Jina Reader (si existen)\nconst jinaData = $('Jina Reader Scraping').first()?.json?.data || '';\nlet jinaTitle = '';\nif (jinaData) {\n  const m = jinaData.match(/^Title:\\s*(.+)$/m);\n  if (m) jinaTitle = m[1].replace(/\\s*[-|]\\s*GitHub.*$/i, '').trim();\n}\n\n// Intentar leer JSON de Gemini (si respondió)\nlet titulo = '', resumen = '', tags = [], puntos_clave = [];\ntry {\n  const geminiText = $input.first()?.json?.content?.parts?.[0]?.text || '';\n  const jsonMatch = geminiText.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[0]);\n    titulo = parsed.titulo || '';\n    resumen = parsed.resumen || '';\n    tags = Array.isArray(parsed.tags) ? parsed.tags : [];\n    puntos_clave = Array.isArray(parsed.puntos_clave) ? parsed.puntos_clave : [];\n  }\n} catch(e) {}\n\n// Fallback de título si Gemini falló\nif (!titulo || titulo.length < 3) {\n  if (jinaTitle) {\n    titulo = jinaTitle;\n  } else {\n    try {\n      const u = new URL(urlOriginal);\n      const slug = u.pathname.split('/').filter(Boolean).pop() || '';\n      titulo = slug.replace(/[-_]+/g, ' ').replace(/\\.(html?|php)$/i, '');\n      if (!titulo || titulo.length < 3) titulo = u.hostname.replace('www.', '');\n    } catch(e) {\n      titulo = 'Enlace Telegram';\n    }\n  }\n}\n\n// Clasificación automática en las 14 categorías existentes\nlet categoriaFile = '14 - Misceláneos y Otros.md';\nlet tagCat = 'miscelaneos';\nlet tipoContenido = 'Recurso Web';\nconst uLower = urlOriginal.toLowerCase();\n\nif (uLower.includes('github.com') || uLower.includes('gitlab.com')) {\n  categoriaFile = '02 - GitHub y Proyectos Open Source.md';\n  tagCat = 'github, open-source';\n  tipoContenido = 'Repositorio Open Source';\n} else if (uLower.includes('linkedin.com') || uLower.includes('lnkd.in')) {\n  categoriaFile = '12 - LinkedIn y Red Profesional.md';\n  tagCat = 'linkedin, profesional';\n  tipoContenido = 'Perfil / Publicación Profesional';\n} else if (uLower.includes('youtube.com') || uLower.includes('youtu.be') || uLower.includes('spotify.com')) {\n  categoriaFile = '07 - Videos y Multimedia (YouTube).md';\n  tagCat = 'video, youtube';\n  tipoContenido = 'Video / Multimedia';\n} else if (/(security|seguridad|ciber|exploit|nmap|hack|cve|vulnerab|kali|wireshark|redeszone|fortinet|owasp)/i.test(uLower)) {\n  categoriaFile = '01 - Ciberseguridad, Redes y Hacking.md';\n  tagCat = 'ciberseguridad, hacking';\n  tipoContenido = 'Herramienta / Artículo de Ciberseguridad';\n} else if (/(chatgpt|openai|claude|gemini|prompt|midjourney|leonardo\\.ai|stable-diffusion|llm|ollama|huggingface)/i.test(uLower)) {\n  categoriaFile = '03 - Inteligencia Artificial y LLMs.md';\n  tagCat = 'ia, llm, machine-learning';\n  tipoContenido = 'Recurso de Inteligencia Artificial';\n} else if (/(python|bash|javascript|golang|api|docker|devops|sql)/i.test(uLower)) {\n  categoriaFile = '04 - Desarrollo, Python y DevOps.md';\n  tagCat = 'desarrollo, python, devops';\n  tipoContenido = 'Programación y DevOps';\n} else if (/(linux|ubuntu|debian|sysadmin|proxmox|btrfs|zfs|openwrt)/i.test(uLower)) {\n  categoriaFile = '05 - Sistemas Operativos y Sysadmin (Linux, Windows).md';\n  tagCat = 'sysadmin, linux';\n  tipoContenido = 'Administración de Sistemas';\n} else if (/(curso|udemy|coursera|facialix|cursin|educalix|platzi)/i.test(uLower)) {\n  categoriaFile = '06 - Cursos, Certificaciones y Libros.md';\n  tagCat = 'curso, capacitacion';\n  tipoContenido = 'Curso o Material de Estudio';\n} else if (/(arcade|emuline|teknoparrot|retroarch|mame|roms|taito)/i.test(uLower)) {\n  categoriaFile = '08 - Arcade, Emulación y Gaming.md';\n  tagCat = 'arcade, emulacion';\n  tipoContenido = 'Arcade y Gaming';\n} else if (/(aliexpress|mercadolibre|amazon)/i.test(uLower)) {\n  categoriaFile = '11 - Compras y Hardware.md';\n  tagCat = 'compras, hardware';\n  tipoContenido = 'Hardware o Componente';\n} else if (/(mega\\.nz|mediafire|drive\\.google)/i.test(uLower)) {\n  categoriaFile = '13 - Descargas y Almacenamiento.md';\n  tagCat = 'descargas, almacenamiento';\n  tipoContenido = 'Descarga de Archivos';\n} else if (/(xataka|genbeta|muycomputer|elchapuzasinformatico|softzone)/i.test(uLower)) {\n  categoriaFile = '10 - Noticias Tech y Artículos.md';\n  tagCat = 'noticias, tech';\n  tipoContenido = 'Noticia Tecnológica';\n}\n\nlet dominio = 'desconocido';\ntry { dominio = new URL(urlOriginal).hostname.replace('www.', ''); } catch(e) {}\n\nconst now = new Date();\nconst dateStr = `${String(now.getDate()).padStart(2,'0')}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getFullYear()).slice(-2)}`;\n\n// Tarjeta Markdown idéntica al archivo temático\nlet card = `\\n### [${titulo.replace(/\\[/g, '(').replace(/\\]/g, ')')}](${urlOriginal})\\n`;\ncard += `- **🌐 Dominio**: \\`${dominio}\\` | **📅 Fecha Compartido**: \\`${dateStr}\\`\\n`;\ncard += `- **📂 Tipo de Contenido**: ${tipoContenido}\\n`;\ncard += `- **📝 Descripción**: ${resumen || 'Enlace capturado automáticamente vía bot de Telegram.'}\\n`;\nif (comentario) {\n  card += `- **💬 Contexto Telegram**: *\"${comentario.replace(/\"/g, '\\\\\"')}\"*\\n`;\n}\ncard += `- **🏷️ Etiquetas**: #${tagCat.replace(/,\\s*/g, ' #')} #captura-telegram\\n\\n***\\n`;\n\nreturn [{\n  json: {\n    titulo,\n    urlOriginal,\n    dominio,\n    categoriaFile,\n    categoriaNombre: categoriaFile.replace('.md', ''),\n    tipoContenido,\n    resumen,\n    markdownCard: card,\n    nombreArchivo: `${now.toISOString().split('T')[0]} - ${titulo.replace(/[\\/\\\\:*?\"<>|]/g, '').trim().substring(0, 60)}`\n  }\n}];\n"
+        }
+      },
+      {
+        "id": "89d0073b-b7d9-41ae-8991-552426709e73",
+        "name": "Obsidian Crear Nota",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "continueOnFail": true,
+        "onError": "continueErrorOutput",
+        "position": [
+          576,
+          64
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "=https://172.21.0.2:27124/vault/Enlaces WhatsApp/{{ encodeURIComponent($json.categoriaFile) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "Bearer REPLACE_WITH_YOUR_OBSIDIAN_API_KEY"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/markdown"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "text/markdown",
+          "body": "={{ $json.markdownCard }}",
+          "options": {
+            "timeout": 15000,
+            "allowUnauthorizedCerts": true
+          }
+        }
+      },
+      {
+        "id": "e35d53ef-1890-4c6b-baaf-dfb8f023aff5",
+        "name": "Telegram Confirmacion OK",
+        "webhookId": "1fba9671-a40b-4232-9e29-db504e824567",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          800,
+          64
+        ],
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+          "text": "=✅ *Nota guardada en Obsidian*\n\n📄 *{{ $('Construir Nota Markdown').item.json.titulo }}*\n\n🏷️ {{ $('Construir Nota Markdown').item.json.tags.map(t => '#' + t).join(' ') }}\n\n🌐 {{ $('Construir Nota Markdown').item.json.dominio }}\n🔗 {{ $('Construir Nota Markdown').item.json.urlOriginal }}",
+          "additionalFields": {
+            "disable_web_page_preview": true,
+            "parse_mode": "Markdown"
+          }
+        },
+        "credentials": {
+          "telegramApi": {
+            "id": "2n4poZ3CUYo46VwR",
+            "name": "Telegram Bot - Multi RSS to Telegram"
+          }
+        }
+      },
+      {
+        "id": "9ab5d5de-8184-4018-a303-e32986f3b019",
+        "name": "Gmail Notificacion OK",
+        "webhookId": "b9df6dac-a398-42df-8e69-0bbaf799b975",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          800,
+          192
+        ],
+        "parameters": {
+          "sendTo": "admin@gmail.com",
+          "subject": "=📓 Obsidian: {{ $('Construir Nota Markdown').item.json.titulo }}",
+          "message": "=Nueva nota guardada en Obsidian.\n\n📄 Título: {{ $('Construir Nota Markdown').item.json.titulo }}\n🏷️ Tags: {{ $('Construir Nota Markdown').item.json.tags.join(', ') }}\n🌐 Dominio: {{ $('Construir Nota Contenido').item.json.dominio }}\n🔗 Fuente: {{ $('Construir Nota Markdown').item.json.urlOriginal }}",
+          "options": {}
+        },
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "SQAwEZAR5yzfyWei",
+            "name": "Gmail - Notificaciones Mail"
+          }
+        }
+      },
+      {
+        "id": "e419a98f-84de-4a0c-99c5-d9fc8e1a1e85",
+        "name": "Telegram Error",
+        "webhookId": "af5fd3be-1ca1-41e1-a2e9-2f15ee98145b",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          368,
+          336
+        ],
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+          "text": "=⚠️ Error al procesar el link:\n\n`{{ $json.message || $json.error?.message || 'Error desconocido' }}`\n\nVerifica que la URL sea accesible e intenta de nuevo.",
+          "additionalFields": {
+            "parse_mode": "Markdown"
+          }
+        },
+        "credentials": {
+          "telegramApi": {
+            "id": "2n4poZ3CUYo46VwR",
+            "name": "Telegram Bot - Multi RSS to Telegram"
+          }
+        }
+      },
+      {
+        "id": "706358ab-6805-44b7-9661-1681753c1ccd",
+        "name": "Telegram Rechazo",
+        "webhookId": "e6bd5480-826a-470b-b2d8-28464208a27c",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          -304,
+          336
+        ],
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+          "text": "❌ Solo proceso URLs válidas enviadas desde tu cuenta autorizada.",
+          "additionalFields": {}
+        },
+        "credentials": {
+          "telegramApi": {
+            "id": "2n4poZ3CUYo46VwR",
+            "name": "Telegram Bot - Multi RSS to Telegram"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Telegram Trigger": {
+        "main": [
+          [
+            {
+              "node": "Es URL valida y mia",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Es URL valida y mia": {
+        "main": [
+          [
+            {
+              "node": "Telegram ACK",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Telegram Rechazo",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Telegram ACK": {
+        "main": [
+          [
+            {
+              "node": "Jina Reader Scraping",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Jina Reader Scraping": {
+        "main": [
+          [
+            {
+              "node": "Gemini Procesar Contenido",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Construir Nota Markdown",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Gemini Procesar Contenido": {
+        "main": [
+          [
+            {
+              "node": "Construir Nota Markdown",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Construir Nota Markdown",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Construir Nota Markdown": {
+        "main": [
+          [
+            {
+              "node": "Obsidian Crear Nota",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Obsidian Crear Nota": {
+        "main": [
+          [
+            {
+              "node": "Telegram Confirmacion OK",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Telegram Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Telegram Confirmacion OK": {
+        "main": [
+          [
+            {
+              "node": "Gmail Notificacion OK",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Security Analyst Morales",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "createdAt": "2026-09-15T19:17:03.407Z",
+    "updatedAt": "2026-09-15T19:17:03.407Z",
+    "workflowPublishHistory": [
+      {
+        "id": 84,
+        "workflowId": "ddMvxptmLGbv6C6T",
+        "versionId": "c37be47f-cdaa-4059-9f62-33b2685f98f8",
+        "event": "activated",
+        "userId": "3794d172-a3cc-4358-8a28-1b1902c5fb61",
+        "createdAt": "2026-09-15T19:17:10.426Z"
+      },
+      {
+        "id": 85,
+        "workflowId": "ddMvxptmLGbv6C6T",
+        "versionId": "c37be47f-cdaa-4059-9f62-33b2685f98f8",
+        "event": "deactivated",
+        "userId": "3794d172-a3cc-4358-8a28-1b1902c5fb61",
+        "createdAt": "2026-09-15T19:17:14.734Z"
+      },
+      {
+        "id": 86,
+        "workflowId": "ddMvxptmLGbv6C6T",
+        "versionId": "c37be47f-cdaa-4059-9f62-33b2685f98f8",
+        "event": "activated",
+        "userId": "3794d172-a3cc-4358-8a28-1b1902c5fb61",
+        "createdAt": "2026-09-15T19:17:16.802Z"
+      }
+    ]
+  }
+}
